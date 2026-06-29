@@ -81,6 +81,7 @@ get_framework_target() {
         autologin.lua) echo "/usr/lib/lua/luci/controller/autologin.lua" ;;
         auto_timezone.sh) echo "/usr/lib/autologin/auto_timezone.sh" ;;
         daemon.sh) echo "/usr/lib/autologin/daemon.sh" ;;
+        heartbeat.sh) echo "/usr/lib/autologin/heartbeat.sh" ;;
         health_check.sh) echo "/usr/lib/autologin/health_check.sh" ;;
         logging.sh) echo "/usr/lib/autologin/logging.sh" ;;
         login_executor.sh) echo "/usr/lib/autologin/login_executor.sh" ;;
