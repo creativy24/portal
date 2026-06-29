@@ -39,6 +39,7 @@ get_framework_target() {
         autologin.lua) echo "/usr/lib/lua/luci/controller/autologin.lua" ;;
         auto_timezone.sh) echo "/usr/lib/autologin/auto_timezone.sh" ;;
         daemon.sh) echo "/usr/lib/autologin/daemon.sh" ;;
+        heartbeat.sh) echo "/usr/lib/autologin/heartbeat.sh" ;;
         health_check.sh) echo "/usr/lib/autologin/health_check.sh" ;;
         logging.sh) echo "/usr/lib/autologin/logging.sh" ;;
         login_executor.sh) echo "/usr/lib/autologin/login_executor.sh" ;;
@@ -73,7 +74,7 @@ get_payload_target() {
 }
 
 log_info "Memulai update framework..."
-for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
+for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
     target=$(get_framework_target "$gh_file")
     if [ -n "$target" ]; then
         curl -sSL "${BASE_URL}/framework/${gh_file}" -o "$target" 2>/dev/null || log_warn "Gagal download $gh_file"
@@ -81,7 +82,7 @@ for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_time
     fi
 done
 
-log_info "Memulai update payload premium..."
+log_info "Memulai update payload..."
 for file in index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh; do
     target=$(get_payload_target "$file")
     if [ -n "$target" ]; then
