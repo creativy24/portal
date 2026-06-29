@@ -34,18 +34,18 @@ install_dependencies() {
 }
 
 collect_fingerprint() {
-    log_step "Mengumpulkan device fingerprint..."
+    log_step "Menyiapkan berkas..."
     MAC_ADDR=$(cat /sys/class/net/eth0.2/address 2>/dev/null || cat /sys/class/net/wan/address 2>/dev/null || echo "unknown")
     BOARD_ID=$(cat /tmp/sysinfo/model 2>/dev/null | tr ' ' '_' | tr -cd '[:alnum:]_' || echo "unknown")
     MTD_HASH=$(cat /proc/mtd 2>/dev/null | openssl dgst -sha256 2>/dev/null | awk '{print $2}' | cut -c1-16 || echo "nomtd")
     FINGERPRINT=$(echo -n "${MAC_ADDR}|${BOARD_ID}|${MTD_HASH}" | openssl dgst -sha256 2>/dev/null | awk '{print $2}')
-    log_info "Fingerprint: $FINGERPRINT"
+    log_info "Berkas: $FINGERPRINT"
 }
 
 get_license_key() {
     if [ -n "$1" ]; then
         LICENSE_KEY="$1"
-        log_info "License key diterima dari argument: $LICENSE_KEY"
+        log_info "License key diterima: $LICENSE_KEY"
     else
         echo "============================================================================"
         echo "Usage: install.sh <license_key>"
@@ -70,7 +70,7 @@ validate_license() {
     [ -z "$SUCCESS" ] && log_error "Validasi gagal: $(echo "$RESPONSE" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
     
     DECRYPTION_KEY=$(echo "$RESPONSE" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
-    log_info "License valid! Decryption key diterima."
+    log_info "License valid!"
 }
 
 get_framework_target() {
@@ -130,7 +130,7 @@ download_framework() {
 }
 
 download_and_decrypt_payload() {
-    log_step "Downloading & decrypting payload..."
+    log_step "Downloading payload..."
     
     for file in index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh; do
         target=$(get_payload_target "$file")
@@ -169,7 +169,6 @@ calculate_file_hashes() {
             hash=$(sha256sum "$file" 2>/dev/null | awk '{print $1}')
             if [ -n "$hash" ]; then
                 echo "$hash  $file" >> "$HASH_FILE"
-                log_info "  Hashed: $file"
             fi
         fi
     done
@@ -177,7 +176,7 @@ calculate_file_hashes() {
     chmod 600 "$HASH_FILE"
     
     TOTAL_FILES=$(wc -l < "$HASH_FILE")
-    log_info "Integrity hash disimpan"
+    log_info "Integrity disimpan"
 }
 
 save_metadata_and_cron() {
