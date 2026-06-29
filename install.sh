@@ -116,7 +116,7 @@ get_payload_target() {
 }
 
 download_framework() {
-    log_step "Downloading framework (18 files)..."
+    log_step "Downloading framework..."
     mkdir -p /etc/hotplug.d/iface /etc/init.d /usr/bin /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/autologin /usr/lib/autologin/captive-detect/handlers /www/luci-static/resources
     
     for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
@@ -130,7 +130,7 @@ download_framework() {
 }
 
 download_and_decrypt_payload() {
-    log_step "Downloading & decrypting payload premium (11 files)..."
+    log_step "Downloading & decrypting payload..."
     
     for file in index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh; do
         target=$(get_payload_target "$file")
@@ -141,11 +141,11 @@ download_and_decrypt_payload() {
             rm -f "/tmp/${file}.enc"
         fi
     done
-    log_info "Payload premium berhasil diinstall."
+    log_info "Payload berhasil diinstall."
 }
 
 calculate_file_hashes() {
-    log_step "Menghitung integrity hash untuk file premium..."
+    log_step "Menghitung integrity hash untuk Payload..."
     HASH_FILE="/usr/lib/autologin/.file_hashes"
     
     > "$HASH_FILE"
@@ -177,11 +177,11 @@ calculate_file_hashes() {
     chmod 600 "$HASH_FILE"
     
     TOTAL_FILES=$(wc -l < "$HASH_FILE")
-    log_info "Integrity hash disimpan: $TOTAL_FILES file di-hash"
+    log_info "Integrity hash disimpan"
 }
 
 save_metadata_and_cron() {
-    log_step "Menyimpan metadata & setup cron..."
+    log_step "Menyimpan setup cron..."
     mkdir -p /usr/lib/autologin
     echo "$LICENSE_KEY" > /usr/lib/autologin/.license_key
     echo "$FINGERPRINT" > /usr/lib/autologin/.fingerprint
