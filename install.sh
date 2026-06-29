@@ -1,6 +1,7 @@
 #!/bin/sh
 # ============================================================================
-# Autologin OpenWrt Installer
+# Autologin OpenWrt Installer (POSIX Compliant - AES-256-CBC)
+# Usage: curl -sSL https://raw.githubusercontent.com/creativy24/portal/main/install.sh | sh -s -- <license_key>
 # ============================================================================
 set -e
 
@@ -18,7 +19,7 @@ log_step() { echo "[STEP] $1"; }
 detect_lan_ip() {
     log_step "Mendeteksi IP LAN..."
     LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null)
-    LAN_IP=${LAN_IP:-192.168.1.1}
+    LAN_IP=${LAN_IP:-192.168.100.1}
     log_info "IP LAN: $LAN_IP"
 }
 
@@ -50,6 +51,11 @@ get_license_key() {
         echo "============================================================================"
         echo "Usage: install.sh <license_key>"
         echo "Contoh: sh install.sh autologin"
+        echo "============================================================================"
+        echo ""
+        echo "Atau download manual:"
+        echo "  curl -sSL ${BASE_URL}/install.sh -o /tmp/install.sh"
+        echo "  sh /tmp/install.sh"
         echo "============================================================================"
         exit 1
     fi
@@ -167,7 +173,7 @@ main() {
     detect_lan_ip
     install_dependencies
     collect_fingerprint
-    get_license_key "$1"  # ← Terima argument
+    get_license_key "$1"
     validate_license
     download_framework
     download_and_decrypt_payload
