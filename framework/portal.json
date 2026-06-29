@@ -1,0 +1,120 @@
+{
+  "fingerprint": {
+    "desktop": {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "sec_ch_ua": "\"Google Chrome\";v=\"120\", \"Chromium\";v=\"120\", \"Not:A-Brand\";v=\"99\"",
+      "sec_ch_ua_platform": "Windows",
+      "sec_ch_ua_mobile": "?0"
+    },
+    "android": {
+      "ua": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36",
+      "sec_ch_ua": "\"Google Chrome\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+      "sec_ch_ua_platform": "Android",
+      "sec_ch_ua_mobile": "?1"
+    }
+  },
+  "patterns": [
+    {
+      "path_key": "/loginocs/",
+      "type_key": "WIFI_ID",
+      "normalize_path": "",
+      "force_https": true,
+      "add_ipc": true,
+      "has_session_grid": true,
+      "has_login_method": true,
+      "login_method_disabled": false,
+      "wms_username": false,
+      "handler_script": "wifi_id_classic.sh",
+      "lp_host": "lp.wifi.id",
+      "logout_api": "https://welcome2.wifi.id/authnew/logout/logoutx.php",
+      "logout_page": "https://welcome2.wifi.id/logout",
+      "logout_page_alt": "https://logout.wifi.id/",
+      "logout_auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU"
+    },
+    {
+      "path_key": "/loginjs/",
+      "type_key": "WIFI_ID",
+      "normalize_path": "",
+      "force_https": true,
+      "add_ipc": true,
+      "has_session_grid": true,
+      "has_login_method": true,
+      "login_method_disabled": false,
+      "wms_username": false,
+      "handler_script": "wifi_id_nextjs.sh",
+      "login_path": "/luwak_wifi/wpdefault/check-login",
+      "lp_host": "lp.wifi.id",
+      "auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU",
+      "logout_api": "https://welcome2.wifi.id/authnew/logout/logoutx.php",
+      "logout_page": "https://welcome2.wifi.id/logout",
+      "logout_page_alt": "https://logout.wifi.id/",
+      "logout_auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU"
+    },
+    {
+      "path_key": "/login/",
+      "type_key": "WIFI_ID",
+      "normalize_path": "/loginjs/",
+      "force_https": true,
+      "add_ipc": true,
+      "has_session_grid": true,
+      "has_login_method": true,
+      "login_method_disabled": false,
+      "wms_username": false,
+      "handler_script": "wifi_id_nextjs.sh",
+      "login_path": "/luwak_wifi/wpdefault/check-login",
+      "lp_host": "lp.wifi.id",
+      "auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU",
+      "logout_api": "https://welcome2.wifi.id/authnew/logout/logoutx.php",
+      "logout_page": "https://welcome2.wifi.id/logout",
+      "logout_page_alt": "https://logout.wifi.id/",
+      "logout_auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU"
+    },
+    {
+      "path_key": "/wms/",
+      "type_key": "WMS",
+      "normalize_path": "",
+      "force_https": true,
+      "add_ipc": false,
+      "has_session_grid": true,
+      "has_login_method": true,
+      "login_method_disabled": true,
+      "wms_username": true,
+      "handler_script": "wms.sh",
+      "login_path": "/luwak_wifi/wpwms/check-login",
+      "lp_host": "lp.wifi.id",
+      "auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU",
+      "logout_api": "https://welcome2.wifi.id/authnew/logout/logoutx.php",
+      "logout_page": "https://welcome2.wifi.id/logout",
+      "logout_page_alt": "https://logout.wifi.id/",
+      "logout_auth_secret": "foJ8gEuuMWG4NgKjBSooOAnDr3g0rawU"
+    },
+    {
+      "query_key": "dst=",
+      "type_key": "HOTSPOT",
+      "normalize_path": "",
+      "force_https": false,
+      "add_ipc": false,
+      "has_session_grid": false,
+      "has_login_method": false,
+      "login_method_disabled": false,
+      "wms_username": false,
+      "handler_script": "hotspot_mikrotik.sh",
+      "logout_path": "/logout",
+      "logout_query": "erase-cookie=on"
+    },
+    {
+      "html_signature": "$(link-login-only)",
+      "type_key": "HOTSPOT",
+      "normalize_path": "",
+      "force_https": false,
+      "add_ipc": false,
+      "has_session_grid": false,
+      "has_login_method": false,
+      "login_method_disabled": false,
+      "wms_username": false,
+      "handler_script": "hotspot_mikrotik.sh",
+      "logout_path": "/logout",
+      "logout_query": "erase-cookie=on"
+    }
+  ]
+}

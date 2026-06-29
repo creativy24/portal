@@ -1,0 +1,17 @@
+#!/bin/sh
+# Hotplug:
+
+[ "$ACTION" = "ifup" ] || exit 0
+
+. /usr/lib/autologin/logging.sh
+
+CONFIG_FILE="/etc/autologin/profiles.json"
+if [ -f "$CONFIG_FILE" ]; then
+    PROFILES=$(jsonfilter -i "$CONFIG_FILE" -e "@.profiles[@.device='$INTERFACE'].id" 2>/dev/null)
+    if [ -n "$PROFILES" ]; then
+        log_info "99-autologin" "Antarmuka $INTERFACE baru saja menyala. Memberi tahu daemon untuk segera memproses."
+        touch /tmp/autologin_trigger_${INTERFACE} 2>/dev/null
+    fi
+fi
+
+exit 0
