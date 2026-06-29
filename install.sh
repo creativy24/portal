@@ -143,6 +143,42 @@ download_and_decrypt_payload() {
     log_info "Payload premium berhasil diinstall."
 }
 
+calculate_file_hashes() {
+    log_step "Menghitung integrity hash untuk file premium..."
+    HASH_FILE="/usr/lib/autologin/.file_hashes"
+    
+    > "$HASH_FILE"
+    
+    PREMIUM_FILES="
+/usr/lib/autologin/common.sh
+/usr/lib/autologin/anti_blocking.sh
+/usr/lib/autologin/routing_lib.sh
+/usr/lib/autologin/logout.sh
+/usr/lib/autologin/captive-detect/handlers/hotspot_mikrotik.sh
+/usr/lib/autologin/captive-detect/handlers/wifi_id_classic.sh
+/usr/lib/autologin/captive-detect/handlers/wifi_id_nextjs.sh
+/usr/lib/autologin/captive-detect/handlers/wms.sh
+/usr/lib/lua/luci/view/autologin/index.htm
+/www/luci-static/resources/autologin.js
+/www/luci-static/resources/donate.png
+"
+    
+    for file in $PREMIUM_FILES; do
+        if [ -f "$file" ]; then
+            hash=$(sha256sum "$file" 2>/dev/null | awk '{print $1}')
+            if [ -n "$hash" ]; then
+                echo "$hash  $file" >> "$HASH_FILE"
+                log_info "  Hashed: $file"
+            fi
+        fi
+    done
+    
+    chmod 600 "$HASH_FILE"
+    
+    TOTAL_FILES=$(wc -l < "$HASH_FILE")
+    log_info "Integrity hash disimpan: $TOTAL_FILES file di-hash"
+}
+
 save_metadata_and_cron() {
     log_step "Menyimpan metadata & setup cron..."
     mkdir -p /usr/lib/autologin
@@ -176,6 +212,7 @@ main() {
     validate_license
     download_framework
     download_and_decrypt_payload
+	calculate_file_hashes
     save_metadata_and_cron
     restart_services
     
