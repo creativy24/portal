@@ -1,7 +1,6 @@
 #!/bin/sh
 # ============================================================================
-# Autologin OpenWrt Installer (POSIX Compliant - AES-256-CBC)
-# Usage: curl -sSL https://raw.githubusercontent.com/creativy24/portal/main/install.sh | sh -s -- <license_key>
+# Autologin OpenWrt Installer
 # ============================================================================
 set -e
 
@@ -136,8 +135,8 @@ download_and_decrypt_payload() {
         target=$(get_payload_target "$file")
         if [ -n "$target" ]; then
             curl -sSL "${BASE_URL}/payload/${file}.enc" -o "/tmp/${file}.enc" 2>/dev/null || continue
-            openssl enc -d -aes-256-cbc -salt -pbkdf2 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null || { log_warn "Decrypt gagal: $file"; rm -f "/tmp/${file}.enc"; continue; }
-            chmod 0755 "$target"
+            openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null || { log_warn "Decrypt gagal: $file"; rm -f "/tmp/${file}.enc"; continue; }
+			chmod 0755 "$target"
             rm -f "/tmp/${file}.enc"
         fi
     done
