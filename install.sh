@@ -16,10 +16,10 @@ log_error() { echo "[ERROR] $1"; exit 1; }
 log_step() { echo "[STEP] $1"; }
 
 detect_lan_ip() {
-    log_step "Mendeteksi IP LAN..."
+    log_step "Mendeteksi IP ROUTER..."
     LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null)
     LAN_IP=${LAN_IP:-192.168.100.1}
-    log_info "IP LAN: $LAN_IP"
+    log_info "IP ROUTER: $LAN_IP"
 }
 
 install_dependencies() {
@@ -119,7 +119,7 @@ download_framework() {
     log_step "Downloading framework (18 files)..."
     mkdir -p /etc/hotplug.d/iface /etc/init.d /usr/bin /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/autologin /usr/lib/autologin/captive-detect/handlers /www/luci-static/resources
     
-    for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
+    for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
         target=$(get_framework_target "$gh_file")
         if [ -n "$target" ]; then
             curl -sSL "${BASE_URL}/framework/${gh_file}" -o "$target" 2>/dev/null || log_warn "Gagal download $gh_file"
