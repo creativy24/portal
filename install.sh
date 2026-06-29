@@ -188,9 +188,21 @@ save_metadata_and_cron() {
     echo "active" > /usr/lib/autologin/.license_status
     chmod 600 /usr/lib/autologin/.license_key /usr/lib/autologin/.fingerprint
 
+    log_info "Setting up cron job..."
+    
     sed -i '/autologin-heartbeat/d' /etc/crontabs/root 2>/dev/null || true
+    sed -i '/heartbeat.sh/d' /etc/crontabs/root 2>/dev/null || true
+    
     echo "0 */6 * * * /usr/lib/autologin/heartbeat.sh >/dev/null 2>&1" >> /etc/crontabs/root
+    
     /etc/init.d/cron restart 2>/dev/null || true
+    
+    if grep -q "heartbeat.sh" /etc/crontabs/root; then
+        log_info "Cron job berhasil ditambahkan."
+    else
+        log_warn "Cron job gagal ditambahkan. Jalankan manual:"
+        log_warn "  echo '0 */6 * * * /usr/lib/autologin/heartbeat.sh' >> /etc/crontabs/root"
+    fi
 }
 
 restart_services() {
