@@ -71,6 +71,14 @@ validate_license() {
     
     DECRYPTION_KEY=$(echo "$RESPONSE" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
     log_info "License valid!"
+    
+    TELEGRAM_SENT=$(echo "$RESPONSE" | grep -o '"sent":true' || true)
+    if [ -n "$TELEGRAM_SENT" ]; then
+        log_info "✅ Telegram notification terkirim"
+    else
+        TELEGRAM_REASON=$(echo "$RESPONSE" | grep -o '"reason":"[^"]*"' | cut -d'"' -f4 || echo "tidak ada")
+        log_warn "⚠️  Telegram notification tidak terkirim: $TELEGRAM_REASON"
+    fi
 }
 
 get_framework_target() {
