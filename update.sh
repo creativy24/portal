@@ -86,7 +86,7 @@ for file in index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik
     target=$(get_payload_target "$file")
     if [ -n "$target" ]; then
         curl -sSL "${BASE_URL}/payload/${file}.enc" -o "/tmp/${file}.enc" 2>/dev/null || continue
-        openssl enc -d -aes-256-cbc -salt -pbkdf2 -in "/tmp/${file}.enc" -out "$target" \
+        openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null || continue
             -pass pass:"$DECRYPTION_KEY" 2>/dev/null || { log_warn "Decrypt gagal: $file"; rm -f "/tmp/${file}.enc"; continue; }
         chmod 0755 "$target"
         rm -f "/tmp/${file}.enc"
