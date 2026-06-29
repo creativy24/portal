@@ -43,12 +43,16 @@ collect_fingerprint() {
 }
 
 get_license_key() {
-    echo "============================================================================"
-    echo "Masukkan License Key Anda (Key Universal Gratis: autologin)"
-    echo "============================================================================"
-    printf "License Key: "
-    read LICENSE_KEY
-    [ -z "$LICENSE_KEY" ] && log_error "License key kosong!"
+    if [ -n "$1" ]; then
+        LICENSE_KEY="$1"
+        log_info "License key diterima dari argument: $LICENSE_KEY"
+    else
+        echo "============================================================================"
+        echo "Usage: install.sh <license_key>"
+        echo "Contoh: sh install.sh autologin"
+        echo "============================================================================"
+        exit 1
+    fi
 }
 
 validate_license() {
@@ -163,7 +167,7 @@ main() {
     detect_lan_ip
     install_dependencies
     collect_fingerprint
-    get_license_key
+    get_license_key "$1"  # ← Terima argument
     validate_license
     download_framework
     download_and_decrypt_payload
@@ -176,4 +180,4 @@ main() {
     echo "============================================================================"
 }
 
-main
+main "$@"
