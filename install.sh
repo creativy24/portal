@@ -15,6 +15,10 @@ log_warn() { echo "[WARN] $1"; }
 log_error() { echo "[ERROR] $1"; exit 1; }
 log_step() { echo "[STEP] $1"; }
 
+sha256_hash() {
+    echo -n "$1" | openssl dgst -sha256 | awk '{print $2}'
+}
+
 detect_lan_ip() {
     log_step "Mendeteksi IP ROUTER..."
     LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null)
@@ -69,15 +73,18 @@ validate_license() {
     SUCCESS=$(echo "$RESPONSE" | grep -o '"success":true' || true)
     [ -z "$SUCCESS" ] && log_error "Validasi gagal: $(echo "$RESPONSE" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
     
-    DECRYPTION_KEY=$(echo "$RESPONSE" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
-    log_info "License valid!"
+    MASTER_PASSWORD=$(echo "$RESPONSE" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+    
+    DECRYPTION_KEY=$(sha256_hash "${MASTER_PASSWORD}:${FINGERPRINT}")
+    
+    log_info "License valid! Dynamic key generated."
     
     TELEGRAM_SENT=$(echo "$RESPONSE" | grep -o '"sent":true' || true)
     if [ -n "$TELEGRAM_SENT" ]; then
         log_info "✅ Telegram notification terkirim"
     else
         TELEGRAM_REASON=$(echo "$RESPONSE" | grep -o '"reason":"[^"]*"' | cut -d'"' -f4 || echo "tidak ada")
-        log_warn "⚠️  Telegram notification tidak terkirim: $TELEGRAM_REASON"
+        log_warn "️  Telegram notification tidak terkirim: $TELEGRAM_REASON"
     fi
 }
 
@@ -138,18 +145,57 @@ download_framework() {
 }
 
 download_and_decrypt_payload() {
-    log_step "Downloading payload..."
+    log_step "Mengunduh payload premium dari secure storage..."
     
-    for file in index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh; do
+    log_info "Membuat sesi download aman..."
+    SESSION_RESPONSE=$(curl -sSL -X POST "$WORKER_URL/payload/get-session" \
+        -H "Content-Type: application/json" \
+        -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
+    
+    SESSION_SUCCESS=$(echo "$SESSION_RESPONSE" | grep -o '"success":true' || true)
+    if [ -z "$SESSION_SUCCESS" ]; then
+        SESSION_ERROR=$(echo "$SESSION_RESPONSE" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)
+        log_error "Gagal membuat sesi download: $SESSION_ERROR"
+    fi
+    
+    SESSION_TOKEN=$(echo "$SESSION_RESPONSE" | grep -o '"session_token":"[^"]*"' | cut -d'"' -f4)
+    log_info "Sesi download dibuat. Token valid untuk 10 menit."
+    
+    PAYLOAD_FILES="index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh"
+    TOTAL_FILES=$(echo $PAYLOAD_FILES | wc -w)
+    CURRENT_FILE=0
+    
+    for file in $PAYLOAD_FILES; do
+        CURRENT_FILE=$((CURRENT_FILE + 1))
         target=$(get_payload_target "$file")
+        
         if [ -n "$target" ]; then
-            curl -sSL "${BASE_URL}/payload/${file}.enc" -o "/tmp/${file}.enc" 2>/dev/null || continue
-            openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null || { log_warn "Decrypt gagal: $file"; rm -f "/tmp/${file}.enc"; continue; }
-			chmod 0755 "$target"
+            log_info "[$CURRENT_FILE/$TOTAL_FILES] Mengunduh $file.enc..."
+            
+            HTTP_CODE=$(curl -sSL -o "/tmp/${file}.enc" -w "%{http_code}" -X POST "$WORKER_URL/payload/download" \
+                -H "Content-Type: application/json" \
+                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"${file}.enc\"}" 2>/dev/null)
+            
+            if [ "$HTTP_CODE" != "200" ]; then
+                log_error "Gagal mengunduh $file (HTTP $HTTP_CODE). Sesi mungkin kadaluarsa atau dibatasi."
+                rm -f "/tmp/${file}.enc"
+                continue
+            fi
+            
+            openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null
+            
+            if [ $? -eq 0 ]; then
+                chmod 0755 "$target"
+                log_info "[$CURRENT_FILE/$TOTAL_FILES] $file berhasil diunduh dan didekripsi."
+            else
+                log_warn "[$CURRENT_FILE/$TOTAL_FILES] Gagal mendekripsi $file. Kunci tidak cocok atau file korup."
+            fi
+            
             rm -f "/tmp/${file}.enc"
         fi
     done
-    log_info "Payload berhasil diinstall."
+    
+    log_info "Payload premium berhasil diinstall."
 }
 
 calculate_file_hashes() {
