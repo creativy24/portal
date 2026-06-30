@@ -1,11 +1,8 @@
 #!/bin/sh
 # ============================================================================
-# Secure Installer v2.2 - Fixed Error Handling & Verbose Logging
+# Autologin Installer
 # ============================================================================
-# HAPUS set -e untuk avoid premature exit
-# set -e
 
-# Obfuscated variables
 _a1="https://raw.githubusercontent.com/creativy24/portal/main"
 _b2="https://autologin.creativy24.workers.dev"
 _c3="autologin"
@@ -14,18 +11,15 @@ _e5="/etc/init.d/autologin"
 _f6="/etc/hotplug.d/iface/99-autologin"
 _g7="/usr/bin/autologin"
 
-# Obfuscated logging functions (generic messages)
 _h8() { echo "[INFO] $1"; }
 _i9() { echo "[WARN] $1"; }
 _j10() { echo "[ERROR] $1"; exit 1; }
 _k11() { echo "[STEP] $1"; }
 
-# Helper: SHA256 Hash
 _l12() {
     echo -n "$1" | openssl dgst -sha256 | awk '{print $2}'
 }
 
-# Detect LAN IP
 _m13() {
     _k11 "Initializing system..."
     LAN_IP=$(ip route show 2>/dev/null | grep 'src 192' | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
@@ -34,7 +28,6 @@ _m13() {
     _h8 "System initialized."
 }
 
-# Install dependencies
 _n14() {
     _k11 "Preparing environment..."
     for pkg in openssl curl jq; do
@@ -50,7 +43,6 @@ _n14() {
     _h8 "Environment ready."
 }
 
-# Collect fingerprint
 _o15() {
     _k11 "Generating system signature..."
     MAC_ADDR=$(cat /sys/class/net/br-lan/address 2>/dev/null || ifconfig br-lan 2>/dev/null | grep 'HWaddr' | awk '{print $5}')
@@ -60,21 +52,18 @@ _o15() {
     _h8 "System signature generated."
 }
 
-# Get license key
 _p16() {
     LICENSE_KEY="$1"
     [ -z "$LICENSE_KEY" ] && _j10 "Access key required. Usage: $0 <access_key>"
     _h8 "Access key received."
 }
 
-# Validate license + Dynamic Key Derivation
 _q17() {
     _k11 "Authenticating..."
     _r18=$(curl -sSL -X POST "$_b2/validate" \
         -H "Content-Type: application/json" \
         -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"mac_address\": \"$MAC_ADDR\", \"board_id\": \"$BOARD_ID\"}" 2>&1)
     
-    # Debug: Show raw response
     _h8 "Authentication response received."
     
     _s19=$(echo "$_r18" | jq -r '.success' 2>/dev/null)
@@ -83,11 +72,10 @@ _q17() {
         _j10 "Authentication failed: $_err"
     fi
     
-    # DYNAMIC KEY DERIVATION
-    _t20=$(echo "$_r18" | jq -r '.decryption_key' 2>/dev/null)
-    DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
+	_t20=$(echo "$_r18" | jq -r '.decryption_key' 2>/dev/null)
+	_STATIC_SALT="autologin_secure_salt_v2.2"
+	DECRYPTION_KEY=$(_l12 "${_t20}:${_STATIC_SALT}")
     
-    # Check telegram notification status
     _tg_status=$(echo "$_r18" | jq -r '.telegram_notification.sent' 2>/dev/null)
     if [ "$_tg_status" = "true" ]; then
         _h8 "Notification sent."
@@ -99,7 +87,6 @@ _q17() {
     _h8 "Authentication successful."
 }
 
-# Framework mapping
 _u21() {
     case "$1" in
         99-autologin) echo "$_f6" ;;
@@ -125,7 +112,6 @@ _u21() {
     esac
 }
 
-# Download framework
 _v22() {
     _k11 "Downloading core components..."
     mkdir -p "$_d4/captive-detect/handlers" /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/autologin /www/luci-static/resources /etc/hotplug.d/iface /etc/init.d /usr/bin
@@ -147,11 +133,9 @@ _v22() {
     _h8 "Core components installed."
 }
 
-# Download & decrypt payload (FIXED: Better error handling)
 _y25() {
     _k11 "Downloading premium components..."
     
-    # Request Session Token
     _h8 "Creating secure session..."
     _z26=$(curl -sSL -X POST "$_b2/payload/get-session" \
         -H "Content-Type: application/json" \
@@ -165,8 +149,7 @@ _y25() {
     
     SESSION_TOKEN=$(echo "$_z26" | jq -r '.session_token' 2>/dev/null)
     _h8 "Secure session created."
-    
-    # Request dynamic instructions
+
     _h8 "Retrieving installation instructions..."
     _ab28=$(curl -sSL -X POST "$_b2/payload/instructions" \
         -H "Content-Type: application/json" \
@@ -178,13 +161,11 @@ _y25() {
         _j10 "Failed to retrieve instructions: $_err"
     fi
     
-    # Save instructions ke temporary file
     echo "$_ab28" > /tmp/autologin_instructions.json
     
     _ad30=$(jq '.instructions | length' /tmp/autologin_instructions.json 2>/dev/null || echo "0")
     _h8 "Received $_ad30 instructions."
     
-    # Execute instructions
     _success_count=0
     _fail_count=0
     
@@ -204,8 +185,7 @@ _y25() {
             _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
             
             _h8 "Processing component: $_file"
-            
-            # Download file encrypted (FIXED: removed --output-binary)
+
             _h8 "  Downloading..."
             HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
@@ -218,7 +198,6 @@ _y25() {
             fi
             
             _h8 "  Processing..."
-            # Decrypt file (FIXED: removed 2>/dev/null untuk lihat error)
             openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
                 -in "/tmp/$_file" -out "$_target" \
                 -pass pass:"$DECRYPTION_KEY"
@@ -241,7 +220,6 @@ _y25() {
     _h8 "Premium components installation completed."
 }
 
-# Calculate integrity hash
 _ah34() {
     _k11 "Generating integrity checksums..."
     HASH_FILE="$_d4/.file_hashes"
@@ -261,7 +239,6 @@ _ah34() {
     _h8 "Integrity checksums generated."
 }
 
-# Save metadata & setup cron
 _aj36() {
     _k11 "Finalizing installation..."
     mkdir -p "$_d4"
@@ -278,7 +255,6 @@ _aj36() {
     _h8 "Installation finalized."
 }
 
-# Restart services
 _ak37() {
     _k11 "Activating services..."
     /etc/init.d/uhttpd restart 2>/dev/null || true
@@ -286,9 +262,8 @@ _ak37() {
     _h8 "Services activated."
 }
 
-# Main
 echo "============================================================================"
-echo "Secure Installer v2.2"
+echo "Autologin Installer"
 echo "============================================================================"
 _m13
 _n14
