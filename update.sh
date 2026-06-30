@@ -1,106 +1,116 @@
 #!/bin/sh
 # ============================================================================
-# Autologin Auto-Update Script
+# Autologin - Update
 # ============================================================================
 set -e
 
-BASE_URL="https://raw.githubusercontent.com/creativy24/portal/main"
-WORKER_URL="https://autologin.creativy24.workers.dev"
+_a1="https://raw.githubusercontent.com/creativy24/portal/main"
+_b2="https://autologin.creativy24.workers.dev"
+_d4="/usr/lib/autologin"
+_e5="/etc/init.d/autologin"
 
-log_info() { echo "[UPDATE] $1"; }
-log_warn() { echo "[UPDATE WARN] $1"; }
+_h8() { echo "[UPDATE] $1"; }
+_i9() { echo "[UPDATE WARN] $1"; }
 
-LICENSE_KEY=$(cat /usr/lib/autologin/.license_key 2>/dev/null)
-FINGERPRINT=$(cat /usr/lib/autologin/.fingerprint 2>/dev/null)
+_l12() {
+    echo -n "$1" | openssl dgst -sha256 | awk '{print $2}'
+}
 
-if [ -z "$LICENSE_KEY" ] || [ -z "$FINGERPRINT" ]; then
-    log_warn "Metadata tidak ditemukan. Membatalkan update."
-    exit 1
-fi
+LICENSE_KEY=$(cat "$_d4/.license_key" 2>/dev/null)
+FINGERPRINT=$(cat "$_d4/.fingerprint" 2>/dev/null)
 
-log_info "Memvalidasi license untuk update..."
-RESPONSE=$(curl -sSL -X POST "$WORKER_URL/validate" \
+[ -z "$LICENSE_KEY" ] || [ -z "$FINGERPRINT" ] && { _i9 "Metadata tidak ditemukan."; exit 1; }
+
+_h8 "Memvalidasi license..."
+_r18=$(curl -sSL -X POST "$_b2/validate" \
     -H "Content-Type: application/json" \
     -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"request_type\": \"refresh\"}" 2>/dev/null)
 
-SUCCESS=$(echo "$RESPONSE" | grep -o '"success":true' || true)
-if [ -z "$SUCCESS" ]; then
-    log_warn "Validasi gagal. Membatalkan update."
-    exit 1
-fi
+_s19=$(echo "$_r18" | grep -o '"success":true' || true)
+[ -z "$_s19" ] && { _i9 "Validasi gagal."; exit 1; }
 
-DECRYPTION_KEY=$(echo "$RESPONSE" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+_t20=$(echo "$_r18" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
 
-get_framework_target() {
+_u21() {
     case "$1" in
         99-autologin) echo "/etc/hotplug.d/iface/99-autologin" ;;
-        autologin_init) echo "/etc/init.d/autologin" ;;
+        autologin_init) echo "$_e5" ;;
         autologin_bin) echo "/usr/bin/autologin" ;;
         autologin.lua) echo "/usr/lib/lua/luci/controller/autologin.lua" ;;
-        auto_timezone.sh) echo "/usr/lib/autologin/auto_timezone.sh" ;;
-        daemon.sh) echo "/usr/lib/autologin/daemon.sh" ;;
-        heartbeat.sh) echo "/usr/lib/autologin/heartbeat.sh" ;;
-        health_check.sh) echo "/usr/lib/autologin/health_check.sh" ;;
-        logging.sh) echo "/usr/lib/autologin/logging.sh" ;;
-        login_executor.sh) echo "/usr/lib/autologin/login_executor.sh" ;;
-        mac_apply.sh) echo "/usr/lib/autologin/mac_apply.sh" ;;
-        mac_spoof.sh) echo "/usr/lib/autologin/mac_spoof.sh" ;;
-        telegram_notify.sh) echo "/usr/lib/autologin/telegram_notify.sh" ;;
-        update_json.lua) echo "/usr/lib/autologin/update_json.lua" ;;
-        backend_hosts.conf) echo "/usr/lib/autologin/captive-detect/backend_hosts.conf" ;;
-        detection.conf) echo "/usr/lib/autologin/captive-detect/detection.conf" ;;
-        endpoints.conf) echo "/usr/lib/autologin/captive-detect/endpoints.conf" ;;
-        portal.json) echo "/usr/lib/autologin/captive-detect/portal.json" ;;
+        auto_timezone.sh) echo "$_d4/auto_timezone.sh" ;;
+        daemon.sh) echo "$_d4/daemon.sh" ;;
+        heartbeat.sh) echo "$_d4/heartbeat.sh" ;;
+        health_check.sh) echo "$_d4/health_check.sh" ;;
+        logging.sh) echo "$_d4/logging.sh" ;;
+        login_executor.sh) echo "$_d4/login_executor.sh" ;;
+        mac_apply.sh) echo "$_d4/mac_apply.sh" ;;
+        mac_spoof.sh) echo "$_d4/mac_spoof.sh" ;;
+        telegram_notify.sh) echo "$_d4/telegram_notify.sh" ;;
+        update_json.lua) echo "$_d4/update_json.lua" ;;
+        backend_hosts.conf) echo "$_d4/captive-detect/backend_hosts.conf" ;;
+        detection.conf) echo "$_d4/captive-detect/detection.conf" ;;
+        endpoints.conf) echo "$_d4/captive-detect/endpoints.conf" ;;
+        portal.json) echo "$_d4/captive-detect/portal.json" ;;
         autologin.css) echo "/www/luci-static/resources/autologin.css" ;;
         *) echo "" ;;
     esac
 }
 
-get_payload_target() {
-    case "$1" in
-        index.htm) echo "/usr/lib/lua/luci/view/autologin/index.htm" ;;
-        common.sh) echo "/usr/lib/autologin/common.sh" ;;
-        anti_blocking.sh) echo "/usr/lib/autologin/anti_blocking.sh" ;;
-        routing_lib.sh) echo "/usr/lib/autologin/routing_lib.sh" ;;
-        hotspot_mikrotik.sh) echo "/usr/lib/autologin/captive-detect/handlers/hotspot_mikrotik.sh" ;;
-        wifi_id_classic.sh) echo "/usr/lib/autologin/captive-detect/handlers/wifi_id_classic.sh" ;;
-        wifi_id_nextjs.sh) echo "/usr/lib/autologin/captive-detect/handlers/wifi_id_nextjs.sh" ;;
-        wms.sh) echo "/usr/lib/autologin/captive-detect/handlers/wms.sh" ;;
-        autologin.js) echo "/www/luci-static/resources/autologin.js" ;;
-        donate.png) echo "/www/luci-static/resources/donate.png" ;;
-        logout.sh) echo "/usr/lib/autologin/logout.sh" ;;
-        *) echo "" ;;
-    esac
-}
-
-log_info "Memulai update framework..."
-for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
-    target=$(get_framework_target "$gh_file")
-    if [ -n "$target" ]; then
-        curl -sSL "${BASE_URL}/framework/${gh_file}" -o "$target" 2>/dev/null || log_warn "Gagal download $gh_file"
-        chmod 0755 "$target"
+_h8 "Memulai update framework..."
+for _w23 in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
+    _x24=$(_u21 "$_w23")
+    if [ -n "$_x24" ]; then
+        curl -sSL "${_a1}/framework/${_w23}" -o "$_x24" 2>/dev/null || _i9 "Gagal download $_w23"
+        chmod 0755 "$_x24"
     fi
 done
 
-log_info "Memulai update payload..."
-for file in index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh; do
-    target=$(get_payload_target "$file")
-    if [ -n "$target" ]; then
-        curl -sSL "${BASE_URL}/payload/${file}.enc" -o "/tmp/${file}.enc" 2>/dev/null || continue
-        openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null || continue
-            -pass pass:"$DECRYPTION_KEY" 2>/dev/null || { log_warn "Decrypt gagal: $file"; rm -f "/tmp/${file}.enc"; continue; }
-        chmod 0755 "$target"
-        rm -f "/tmp/${file}.enc"
-    fi
-done
+_h8 "Mengunduh payload..."
 
-REMOTE_VERSION=$(curl -sSL "${BASE_URL}/version.txt" 2>/dev/null || echo "1.0.0")
-echo "$REMOTE_VERSION" > /usr/lib/autologin/.version
-log_info "Versi diupdate ke: $REMOTE_VERSION"
+_z26=$(curl -sSL -X POST "$_b2/payload/get-session" \
+    -H "Content-Type: application/json" \
+    -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
 
-log_info "Update selesai. Membersihkan cache dan restarting services..."
+_aa27=$(echo "$_z26" | grep -o '"success":true' || true)
+if [ -n "$_aa27" ]; then
+    SESSION_TOKEN=$(echo "$_z26" | grep -o '"session_token":"[^"]*"' | cut -d'"' -f4)
+    
+    _ab28=$(curl -sSL -X POST "$_b2/payload/instructions" \
+        -H "Content-Type: application/json" \
+        -d "{\"session_token\": \"$SESSION_TOKEN\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
+    
+    echo "$_ab28" | grep -o '"file":"[^"]*"' | cut -d'"' -f4 | while read _ae31; do
+        _af32=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"target":"[^"]*"' | cut -d'"' -f4)
+        _ag33=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"chmod":"[^"]*"' | cut -d'"' -f4)
+        
+        if [ -n "$_af32" ]; then
+            HTTP_CODE=$(curl -sSL -o "/tmp/$_ae31" -w "%{http_code}" -X POST "$_b2/payload/download" \
+                -H "Content-Type: application/json" \
+                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_ae31\"}" 2>/dev/null)
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+                openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+                    -in "/tmp/$_ae31" -out "$_af32" \
+                    -pass pass:"$DECRYPTION_KEY" 2>/dev/null && {
+                    [ -n "$_ag33" ] && chmod "$_ag33" "$_af32"
+                } || _i9 "Decrypt gagal: $_ae31"
+            fi
+            
+            rm -f "/tmp/$_ae31"
+        fi
+    done
+else
+    _i9 "Gagal membuat sesi download."
+fi
+
+REMOTE_VERSION=$(curl -sSL "${_a1}/version.txt" 2>/dev/null || echo "2.0.0")
+echo "$REMOTE_VERSION" > "$_d4/.version"
+_h8 "Versi diupdate ke: $REMOTE_VERSION"
+
+_h8 "Membersihkan cache dan restarting services..."
 rm -rf /tmp/luci-modulecache /tmp/luci-indexcache /tmp/luci-* 2>/dev/null || true
 /etc/init.d/uhttpd restart 2>/dev/null || true
-/etc/init.d/autologin restart 2>/dev/null || true
+[ -f "$_e5" ] && "$_e5" restart 2>/dev/null || true
 
-log_info "Proses update berhasil diselesaikan."
+_h8 "Update berhasil."
