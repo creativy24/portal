@@ -30,7 +30,8 @@ _s19=$(echo "$_r18" | jq -r '.success' 2>/dev/null)
 [ "$_s19" != "true" ] && { _i9 "Validasi gagal."; exit 1; }
 
 _t20=$(echo "$_r18" | jq -r '.decryption_key' 2>/dev/null)
-DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
+_STATIC_SALT="autologin_secure_salt_v2.2"
+DECRYPTION_KEY=$(_l12 "${_t20}:${_STATIC_SALT}")
 
 _u21() {
     case "$1" in
