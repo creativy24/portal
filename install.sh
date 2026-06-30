@@ -1,6 +1,6 @@
 #!/bin/sh
 # ============================================================================
-# Autologin Installer
+# Autologin Installer - Openwrt
 # ============================================================================
 set -e
 
@@ -31,19 +31,22 @@ _m13() {
 
 _n14() {
     _k11 "Memeriksa dependensi..."
-    for pkg in openssl curl; do
-        command -v $pkg >/dev/null 2>&1 || { opkg update >/dev/null 2>&1 && opkg install $pkg >/dev/null 2>&1; }
+    for pkg in openssl curl jq; do
+        command -v $pkg >/dev/null 2>&1 || { 
+            opkg update >/dev/null 2>&1
+            opkg install $pkg >/dev/null 2>&1 || _i9 "Gagal install $pkg"
+        }
     done
     _h8 "Dependensi siap."
 }
 
 _o15() {
-    _k11 "Data payload..."
+    _k11 "Mengumpulkan device fingerprint..."
     MAC_ADDR=$(cat /sys/class/net/br-lan/address 2>/dev/null || ifconfig br-lan 2>/dev/null | grep 'HWaddr' | awk '{print $5}')
     BOARD_ID=$(cat /tmp/sysinfo/board_name 2>/dev/null || echo "unknown")
     MTD_HASH=$(cat /dev/mtd$(cat /proc/mtd 2>/dev/null | grep 'Config' | cut -d: -f1 | tr -d 'mtd') 2>/dev/null | openssl dgst -sha256 | awk '{print $2}' || echo "default")
     FINGERPRINT=$(_l12 "${MAC_ADDR}:${BOARD_ID}:${MTD_HASH}")
-    _h8 "Data: $FINGERPRINT"
+    _h8 "Fingerprint: $FINGERPRINT"
 }
 
 _p16() {
@@ -53,15 +56,15 @@ _p16() {
 }
 
 _q17() {
-    _k11 "Validasi license..."
+    _k11 "Memvalidasi license key..."
     _r18=$(curl -sSL -X POST "$_b2/validate" \
         -H "Content-Type: application/json" \
         -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"mac_address\": \"$MAC_ADDR\", \"board_id\": \"$BOARD_ID\"}" 2>/dev/null)
     
-    _s19=$(echo "$_r18" | grep -o '"success":true' || true)
-    [ -z "$_s19" ] && _j10 "Validasi gagal: $(echo "$_r18" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
+    _s19=$(echo "$_r18" | jq -r '.success' 2>/dev/null)
+    [ "$_s19" != "true" ] && _j10 "Validasi gagal: $(echo "$_r18" | jq -r '.error' 2>/dev/null)"
     
-    _t20=$(echo "$_r18" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+    _t20=$(echo "$_r18" | jq -r '.decryption_key' 2>/dev/null)
     DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
     
     _h8 "License valid! Dynamic key generated."
@@ -107,69 +110,79 @@ _v22() {
 }
 
 _y25() {
-    _k11 "Mengunduh payload..."
+    _k11 "Mengunduh payload premium dari secure storage..."
     
     _z26=$(curl -sSL -X POST "$_b2/payload/get-session" \
         -H "Content-Type: application/json" \
         -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
     
-    _aa27=$(echo "$_z26" | grep -o '"success":true' || true)
-    [ -z "$_aa27" ] && _j10 "Gagal membuat sesi download: $(echo "$_z26" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
+    _aa27=$(echo "$_z26" | jq -r '.success' 2>/dev/null)
+    [ "$_aa27" != "true" ] && _j10 "Gagal membuat sesi download: $(echo "$_z26" | jq -r '.error' 2>/dev/null)"
     
-    SESSION_TOKEN=$(echo "$_z26" | grep -o '"session_token":"[^"]*"' | cut -d'"' -f4)
+    SESSION_TOKEN=$(echo "$_z26" | jq -r '.session_token' 2>/dev/null)
     _h8 "Sesi download dibuat."
     
     _ab28=$(curl -sSL -X POST "$_b2/payload/instructions" \
         -H "Content-Type: application/json" \
         -d "{\"session_token\": \"$SESSION_TOKEN\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
     
-    _ac29=$(echo "$_ab28" | grep -o '"success":true' || true)
-    [ -z "$_ac29" ] && _j10 "Gagal mendapatkan instructions"
-
-    _ad30=$(echo "$_ab28" | grep -o '"total_files":[0-9]*' | cut -d: -f2)
+    _ac29=$(echo "$_ab28" | jq -r '.success' 2>/dev/null)
+    [ "$_ac29" != "true" ] && _j10 "Gagal mendapatkan instructions"
+    
+    echo "$_ab28" > /tmp/autologin_instructions.json
+    
+    _ad30=$(jq '.instructions | length' /tmp/autologin_instructions.json 2>/dev/null)
     _h8 "Menerima $_ad30 instructions dari server."
     
-    echo "$_ab28" | grep -o '"file":"[^"]*"' | cut -d'"' -f4 | while read _ae31; do
-        _af32=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"target":"[^"]*"' | cut -d'"' -f4)
-        _ag33=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"chmod":"[^"]*"' | cut -d'"' -f4)
+    jq -c '.instructions[]' /tmp/autologin_instructions.json | while read -r _inst; do
+        _action=$(echo "$_inst" | jq -r '.action' 2>/dev/null)
         
-        if [ -n "$_af32" ]; then
-            _h8 "Mengunduh $_ae31..."
+        if [ "$_action" = "mkdir" ]; then
+            _path=$(echo "$_inst" | jq -r '.path' 2>/dev/null)
+            mkdir -p "$_path" 2>/dev/null || _i9 "Gagal create directory: $_path"
             
-            HTTP_CODE=$(curl -sSL -o "/tmp/$_ae31" -w "%{http_code}" -X POST "$_b2/payload/download" \
+        elif [ "$_action" = "download_decrypt" ]; then
+            _file=$(echo "$_inst" | jq -r '.file' 2>/dev/null)
+            _target=$(echo "$_inst" | jq -r '.target' 2>/dev/null)
+            _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
+            
+            _h8 "Mengunduh $_file..."
+            
+            HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" --output-binary -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
-                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_ae31\"}" 2>/dev/null)
+                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_file\"}" 2>/dev/null)
             
             if [ "$HTTP_CODE" != "200" ]; then
-                _i9 "Gagal mengunduh $_ae31 (HTTP $HTTP_CODE)"
-                rm -f "/tmp/$_ae31"
+                _i9 "Gagal mengunduh $_file (HTTP $HTTP_CODE)"
+                rm -f "/tmp/$_file"
                 continue
             fi
             
             openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
-                -in "/tmp/$_ae31" -out "$_af32" \
+                -in "/tmp/$_file" -out "$_target" \
                 -pass pass:"$DECRYPTION_KEY" 2>/dev/null
             
             if [ $? -eq 0 ]; then
-                [ -n "$_ag33" ] && chmod "$_ag33" "$_af32"
-                _h8 "$_ae31 berhasil."
+                [ -n "$_chmod" ] && chmod "$_chmod" "$_target"
+                _h8 "$_file berhasil."
             else
-                _i9 "Decrypt gagal: $_ae31"
+                _i9 "Decrypt gagal: $_file"
             fi
             
-            rm -f "/tmp/$_ae31"
+            rm -f "/tmp/$_file"
         fi
     done
     
-    _h8 "Payload berhasil diinstall."
+    rm -f /tmp/autologin_instructions.json
+    _h8 "Payload premium berhasil diinstall."
 }
 
 _ah34() {
-    _k11 "Integrity hash..."
+    _k11 "Menghitung integrity hash..."
     HASH_FILE="$_d4/.file_hashes"
     > "$HASH_FILE"
     
-    find "$_d4" -type f -name "*.sh" -o -name "*.lua" -o -name "*.conf" -o -name "*.json" 2>/dev/null | while read _ai35; do
+    find "$_d4" -type f \( -name "*.sh" -o -name "*.lua" -o -name "*.conf" -o -name "*.json" \) 2>/dev/null | while read _ai35; do
         hash=$(sha256sum "$_ai35" 2>/dev/null | awk '{print $1}')
         [ -n "$hash" ] && echo "$hash  $_ai35" >> "$HASH_FILE"
     done
@@ -184,11 +197,11 @@ _ah34() {
 }
 
 _aj36() {
-    _k11 "Setup cron..."
+    _k11 "Menyimpan metadata & setup cron..."
     mkdir -p "$_d4"
     echo "$LICENSE_KEY" > "$_d4/.license_key"
     echo "$FINGERPRINT" > "$_d4/.fingerprint"
-    echo "2.0.0" > "$_d4/.version"
+    echo "2.1.0" > "$_d4/.version"
     echo "active" > "$_d4/.license_status"
     chmod 600 "$_d4/.license_key" "$_d4/.fingerprint"
     
@@ -205,9 +218,8 @@ _ak37() {
     [ -f "$_e5" ] && "$_e5" start 2>/dev/null || true
 }
 
-# Main
 echo "============================================================================"
-echo "Autologin Installer v1.0"
+echo "Autologin Installer"
 echo "============================================================================"
 _m13
 _n14
