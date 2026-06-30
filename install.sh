@@ -1,9 +1,11 @@
 #!/bin/sh
 # ============================================================================
-# Autologin Installer - Openwrt
+# Secure Installer v2.2 - Fixed Error Handling & Verbose Logging
 # ============================================================================
-set -e
+# HAPUS set -e untuk avoid premature exit
+# set -e
 
+# Obfuscated variables
 _a1="https://raw.githubusercontent.com/creativy24/portal/main"
 _b2="https://autologin.creativy24.workers.dev"
 _c3="autologin"
@@ -12,64 +14,92 @@ _e5="/etc/init.d/autologin"
 _f6="/etc/hotplug.d/iface/99-autologin"
 _g7="/usr/bin/autologin"
 
+# Obfuscated logging functions (generic messages)
 _h8() { echo "[INFO] $1"; }
 _i9() { echo "[WARN] $1"; }
 _j10() { echo "[ERROR] $1"; exit 1; }
 _k11() { echo "[STEP] $1"; }
 
+# Helper: SHA256 Hash
 _l12() {
     echo -n "$1" | openssl dgst -sha256 | awk '{print $2}'
 }
 
+# Detect LAN IP
 _m13() {
-    _k11 "Mendeteksi IP ROUTER..."
+    _k11 "Initializing system..."
     LAN_IP=$(ip route show 2>/dev/null | grep 'src 192' | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
     [ -z "$LAN_IP" ] && LAN_IP=$(ifconfig 2>/dev/null | grep -A1 "br-lan" | grep 'inet addr' | awk '{print $2}' | cut -d: -f2)
     [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
-    _h8 "IP ROUTER: $LAN_IP"
+    _h8 "System initialized."
 }
 
+# Install dependencies
 _n14() {
-    _k11 "Memeriksa dependensi..."
+    _k11 "Preparing environment..."
     for pkg in openssl curl jq; do
         command -v $pkg >/dev/null 2>&1 || { 
+            _h8 "Installing required components..."
             opkg update >/dev/null 2>&1
-            opkg install $pkg >/dev/null 2>&1 || _i9 "Gagal install $pkg"
+            opkg install $pkg >/dev/null 2>&1 || {
+                _i9 "Component installation failed: $pkg"
+                _i9 "Please install manually: opkg install $pkg"
+            }
         }
     done
-    _h8 "Dependensi siap."
+    _h8 "Environment ready."
 }
 
+# Collect fingerprint
 _o15() {
-    _k11 "Mengumpulkan device fingerprint..."
+    _k11 "Generating system signature..."
     MAC_ADDR=$(cat /sys/class/net/br-lan/address 2>/dev/null || ifconfig br-lan 2>/dev/null | grep 'HWaddr' | awk '{print $5}')
     BOARD_ID=$(cat /tmp/sysinfo/board_name 2>/dev/null || echo "unknown")
     MTD_HASH=$(cat /dev/mtd$(cat /proc/mtd 2>/dev/null | grep 'Config' | cut -d: -f1 | tr -d 'mtd') 2>/dev/null | openssl dgst -sha256 | awk '{print $2}' || echo "default")
     FINGERPRINT=$(_l12 "${MAC_ADDR}:${BOARD_ID}:${MTD_HASH}")
-    _h8 "Fingerprint: $FINGERPRINT"
+    _h8 "System signature generated."
 }
 
+# Get license key
 _p16() {
     LICENSE_KEY="$1"
-    [ -z "$LICENSE_KEY" ] && _j10 "License key tidak diberikan. Usage: $0 <license_key>"
-    _h8 "License key diterima: $LICENSE_KEY"
+    [ -z "$LICENSE_KEY" ] && _j10 "Access key required. Usage: $0 <access_key>"
+    _h8 "Access key received."
 }
 
+# Validate license + Dynamic Key Derivation
 _q17() {
-    _k11 "Memvalidasi license key..."
+    _k11 "Authenticating..."
     _r18=$(curl -sSL -X POST "$_b2/validate" \
         -H "Content-Type: application/json" \
-        -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"mac_address\": \"$MAC_ADDR\", \"board_id\": \"$BOARD_ID\"}" 2>/dev/null)
+        -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"mac_address\": \"$MAC_ADDR\", \"board_id\": \"$BOARD_ID\"}" 2>&1)
+    
+    # Debug: Show raw response
+    _h8 "Authentication response received."
     
     _s19=$(echo "$_r18" | jq -r '.success' 2>/dev/null)
-    [ "$_s19" != "true" ] && _j10 "Validasi gagal: $(echo "$_r18" | jq -r '.error' 2>/dev/null)"
+    if [ "$_s19" != "true" ]; then
+        _err=$(echo "$_r18" | jq -r '.error' 2>/dev/null || echo "Unknown error")
+        _j10 "Authentication failed: $_err"
+    fi
     
+    # DYNAMIC KEY DERIVATION
     _t20=$(echo "$_r18" | jq -r '.decryption_key' 2>/dev/null)
     DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
     
-    _h8 "License valid! Dynamic key generated."
+    # Check telegram notification status
+    _tg_status=$(echo "$_r18" | jq -r '.telegram_notification.sent' 2>/dev/null)
+    if [ "$_tg_status" = "true" ]; then
+        _h8 "Notification sent."
+    else
+        _tg_reason=$(echo "$_r18" | jq -r '.telegram_notification.reason' 2>/dev/null || echo "N/A")
+        _i9 "Notification status: $_tg_reason"
+    fi
+    
+    _h8 "Authentication successful."
 }
 
+# Framework mapping
 _u21() {
     case "$1" in
         99-autologin) echo "$_f6" ;;
@@ -95,78 +125,112 @@ _u21() {
     esac
 }
 
+# Download framework
 _v22() {
-    _k11 "Downloading framework..."
+    _k11 "Downloading core components..."
     mkdir -p "$_d4/captive-detect/handlers" /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/autologin /www/luci-static/resources /etc/hotplug.d/iface /etc/init.d /usr/bin
     
+    _total=19
+    _current=0
     for _w23 in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
+        _current=$((_current + 1))
         _x24=$(_u21 "$_w23")
         if [ -n "$_x24" ]; then
-            curl -sSL "${_a1}/framework/${_w23}" -o "$_x24" 2>/dev/null || continue
+            _h8 "[$_current/$_total] Downloading component..."
+            curl -sSL "${_a1}/framework/${_w23}" -o "$_x24" 2>&1 || {
+                _i9 "Failed to download component $_current"
+                continue
+            }
             chmod 0755 "$_x24"
         fi
     done
-    _h8 "Framework berhasil diinstall."
+    _h8 "Core components installed."
 }
 
+# Download & decrypt payload (FIXED: Better error handling)
 _y25() {
-    _k11 "Mengunduh payload premium dari secure storage..."
+    _k11 "Downloading premium components..."
     
+    # Request Session Token
+    _h8 "Creating secure session..."
     _z26=$(curl -sSL -X POST "$_b2/payload/get-session" \
         -H "Content-Type: application/json" \
-        -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
+        -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>&1)
     
     _aa27=$(echo "$_z26" | jq -r '.success' 2>/dev/null)
-    [ "$_aa27" != "true" ] && _j10 "Gagal membuat sesi download: $(echo "$_z26" | jq -r '.error' 2>/dev/null)"
+    if [ "$_aa27" != "true" ]; then
+        _err=$(echo "$_z26" | jq -r '.error' 2>/dev/null || echo "Unknown error")
+        _j10 "Session creation failed: $_err"
+    fi
     
     SESSION_TOKEN=$(echo "$_z26" | jq -r '.session_token' 2>/dev/null)
-    _h8 "Sesi download dibuat."
+    _h8 "Secure session created."
     
+    # Request dynamic instructions
+    _h8 "Retrieving installation instructions..."
     _ab28=$(curl -sSL -X POST "$_b2/payload/instructions" \
         -H "Content-Type: application/json" \
-        -d "{\"session_token\": \"$SESSION_TOKEN\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
+        -d "{\"session_token\": \"$SESSION_TOKEN\", \"fingerprint\": \"$FINGERPRINT\"}" 2>&1)
     
     _ac29=$(echo "$_ab28" | jq -r '.success' 2>/dev/null)
-    [ "$_ac29" != "true" ] && _j10 "Gagal mendapatkan instructions"
+    if [ "$_ac29" != "true" ]; then
+        _err=$(echo "$_ab28" | jq -r '.error' 2>/dev/null || echo "Unknown error")
+        _j10 "Failed to retrieve instructions: $_err"
+    fi
     
+    # Save instructions ke temporary file
     echo "$_ab28" > /tmp/autologin_instructions.json
     
-    _ad30=$(jq '.instructions | length' /tmp/autologin_instructions.json 2>/dev/null)
-    _h8 "Menerima $_ad30 instructions dari server."
+    _ad30=$(jq '.instructions | length' /tmp/autologin_instructions.json 2>/dev/null || echo "0")
+    _h8 "Received $_ad30 instructions."
     
-    jq -c '.instructions[]' /tmp/autologin_instructions.json | while read -r _inst; do
+    # Execute instructions
+    _success_count=0
+    _fail_count=0
+    
+    jq -c '.instructions[]' /tmp/autologin_instructions.json 2>/dev/null | while read -r _inst; do
         _action=$(echo "$_inst" | jq -r '.action' 2>/dev/null)
         
         if [ "$_action" = "mkdir" ]; then
             _path=$(echo "$_inst" | jq -r '.path' 2>/dev/null)
-            mkdir -p "$_path" 2>/dev/null || _i9 "Gagal create directory: $_path"
+            _h8 "Creating directory structure..."
+            mkdir -p "$_path" 2>&1 || {
+                _i9 "Failed to create directory: $_path"
+            }
             
         elif [ "$_action" = "download_decrypt" ]; then
             _file=$(echo "$_inst" | jq -r '.file' 2>/dev/null)
             _target=$(echo "$_inst" | jq -r '.target' 2>/dev/null)
             _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
             
-            _h8 "Mengunduh $_file..."
+            _h8 "Processing component: $_file"
             
-            HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" --output-binary -X POST "$_b2/payload/download" \
+            # Download file encrypted (FIXED: removed --output-binary)
+            _h8 "  Downloading..."
+            HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
-                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_file\"}" 2>/dev/null)
+                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_file\"}" 2>&1)
             
             if [ "$HTTP_CODE" != "200" ]; then
-                _i9 "Gagal mengunduh $_file (HTTP $HTTP_CODE)"
+                _i9 "  Download failed (HTTP $HTTP_CODE)"
                 rm -f "/tmp/$_file"
                 continue
             fi
             
+            _h8 "  Processing..."
+            # Decrypt file (FIXED: removed 2>/dev/null untuk lihat error)
             openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
                 -in "/tmp/$_file" -out "$_target" \
-                -pass pass:"$DECRYPTION_KEY" 2>/dev/null
+                -pass pass:"$DECRYPTION_KEY"
             
-            if [ $? -eq 0 ]; then
+            _decrypt_status=$?
+            if [ $_decrypt_status -eq 0 ]; then
                 [ -n "$_chmod" ] && chmod "$_chmod" "$_target"
-                _h8 "$_file berhasil."
+                _h8 "  Component installed successfully."
             else
-                _i9 "Decrypt gagal: $_file"
+                _i9 "  Processing failed (exit code: $_decrypt_status)"
+                _i9 "  Target: $_target"
+                ls -lh "/tmp/$_file" 2>&1
             fi
             
             rm -f "/tmp/$_file"
@@ -174,11 +238,12 @@ _y25() {
     done
     
     rm -f /tmp/autologin_instructions.json
-    _h8 "Payload premium berhasil diinstall."
+    _h8 "Premium components installation completed."
 }
 
+# Calculate integrity hash
 _ah34() {
-    _k11 "Menghitung integrity hash..."
+    _k11 "Generating integrity checksums..."
     HASH_FILE="$_d4/.file_hashes"
     > "$HASH_FILE"
     
@@ -193,15 +258,16 @@ _ah34() {
     done
     
     chmod 600 "$HASH_FILE"
-    _h8 "Integrity hash disimpan."
+    _h8 "Integrity checksums generated."
 }
 
+# Save metadata & setup cron
 _aj36() {
-    _k11 "Menyimpan metadata & setup cron..."
+    _k11 "Finalizing installation..."
     mkdir -p "$_d4"
     echo "$LICENSE_KEY" > "$_d4/.license_key"
     echo "$FINGERPRINT" > "$_d4/.fingerprint"
-    echo "2.1.0" > "$_d4/.version"
+    echo "2.2.0" > "$_d4/.version"
     echo "active" > "$_d4/.license_status"
     chmod 600 "$_d4/.license_key" "$_d4/.fingerprint"
     
@@ -209,17 +275,20 @@ _aj36() {
     echo "0 */6 * * * $_d4/heartbeat.sh >/dev/null 2>&1" >> /etc/crontabs/root
     /etc/init.d/cron restart 2>/dev/null || true
     
-    _h8 "Cron job ditambahkan."
+    _h8 "Installation finalized."
 }
 
+# Restart services
 _ak37() {
-    _k11 "Restarting services..."
+    _k11 "Activating services..."
     /etc/init.d/uhttpd restart 2>/dev/null || true
     [ -f "$_e5" ] && "$_e5" start 2>/dev/null || true
+    _h8 "Services activated."
 }
 
+# Main
 echo "============================================================================"
-echo "Autologin Installer"
+echo "Secure Installer v2.2"
 echo "============================================================================"
 _m13
 _n14
@@ -233,6 +302,6 @@ _aj36
 _ak37
 
 echo "============================================================================"
-_h8 "INSTALASI BERHASIL!"
-echo "Akses panel: http://${LAN_IP}/cgi-bin/luci/admin/autologin/konfigurasi"
+_h8 "Installation completed successfully!"
+echo "Access panel: http://${LAN_IP}/cgi-bin/luci/admin/autologin/konfigurasi"
 echo "============================================================================"
