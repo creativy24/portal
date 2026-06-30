@@ -4,288 +4,222 @@
 # ============================================================================
 set -e
 
-GITHUB_USER="creativy24"
-GITHUB_REPO="portal"
-GITHUB_BRANCH="main"
-BASE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}"
-WORKER_URL="https://autologin.creativy24.workers.dev"
+_a1="https://raw.githubusercontent.com/creativy24/portal/main"
+_b2="https://autologin.creativy24.workers.dev"
+_c3="autologin"
+_d4="/usr/lib/autologin"
+_e5="/etc/init.d/autologin"
+_f6="/etc/hotplug.d/iface/99-autologin"
+_g7="/usr/bin/autologin"
 
-log_info() { echo "[INFO] $1"; }
-log_warn() { echo "[WARN] $1"; }
-log_error() { echo "[ERROR] $1"; exit 1; }
-log_step() { echo "[STEP] $1"; }
+_h8() { echo "[INFO] $1"; }
+_i9() { echo "[WARN] $1"; }
+_j10() { echo "[ERROR] $1"; exit 1; }
+_k11() { echo "[STEP] $1"; }
 
-sha256_hash() {
+_l12() {
     echo -n "$1" | openssl dgst -sha256 | awk '{print $2}'
 }
 
-detect_lan_ip() {
-    log_step "Mendeteksi IP ROUTER..."
-    LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null)
-    LAN_IP=${LAN_IP:-192.168.100.1}
-    log_info "IP ROUTER: $LAN_IP"
+_m13() {
+    _k11 "Mendeteksi IP ROUTER..."
+    LAN_IP=$(ip route show 2>/dev/null | grep 'src 192' | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
+    [ -z "$LAN_IP" ] && LAN_IP=$(ifconfig 2>/dev/null | grep -A1 "br-lan" | grep 'inet addr' | awk '{print $2}' | cut -d: -f2)
+    [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
+    _h8 "IP ROUTER: $LAN_IP"
 }
 
-install_dependencies() {
-    log_step "Memeriksa dependensi..."
-    for pkg in curl ca-certificates openssl-util; do
-        if ! opkg list-installed 2>/dev/null | grep -q "^$pkg "; then
-            opkg update >/dev/null 2>&1
-            opkg install "$pkg" >/dev/null 2>&1 || log_warn "Gagal install $pkg"
-        fi
+_n14() {
+    _k11 "Memeriksa dependensi..."
+    for pkg in openssl curl; do
+        command -v $pkg >/dev/null 2>&1 || { opkg update >/dev/null 2>&1 && opkg install $pkg >/dev/null 2>&1; }
     done
-    log_info "Dependensi siap."
+    _h8 "Dependensi siap."
 }
 
-collect_fingerprint() {
-    log_step "Menyiapkan berkas..."
-    MAC_ADDR=$(cat /sys/class/net/eth0.2/address 2>/dev/null || cat /sys/class/net/wan/address 2>/dev/null || echo "unknown")
-    BOARD_ID=$(cat /tmp/sysinfo/model 2>/dev/null | tr ' ' '_' | tr -cd '[:alnum:]_' || echo "unknown")
-    MTD_HASH=$(cat /proc/mtd 2>/dev/null | openssl dgst -sha256 2>/dev/null | awk '{print $2}' | cut -c1-16 || echo "nomtd")
-    FINGERPRINT=$(echo -n "${MAC_ADDR}|${BOARD_ID}|${MTD_HASH}" | openssl dgst -sha256 2>/dev/null | awk '{print $2}')
-    log_info "Berkas: $FINGERPRINT"
+_o15() {
+    _k11 "Data Device..."
+    MAC_ADDR=$(cat /sys/class/net/br-lan/address 2>/dev/null || ifconfig br-lan 2>/dev/null | grep 'HWaddr' | awk '{print $5}')
+    BOARD_ID=$(cat /tmp/sysinfo/board_name 2>/dev/null || echo "unknown")
+    MTD_HASH=$(cat /dev/mtd$(cat /proc/mtd 2>/dev/null | grep 'Config' | cut -d: -f1 | tr -d 'mtd') 2>/dev/null | openssl dgst -sha256 | awk '{print $2}' || echo "default")
+    FINGERPRINT=$(_l12 "${MAC_ADDR}:${BOARD_ID}:${MTD_HASH}")
+    _h8 "Data: $FINGERPRINT"
 }
 
-get_license_key() {
-    if [ -n "$1" ]; then
-        LICENSE_KEY="$1"
-        log_info "License key diterima: $LICENSE_KEY"
-    else
-        echo "============================================================================"
-        echo "Usage: install.sh <license_key>"
-        echo "Contoh: sh install.sh autologin"
-        echo "============================================================================"
-        echo ""
-        echo "Atau download manual:"
-        echo "  curl -sSL ${BASE_URL}/install.sh -o /tmp/install.sh"
-        echo "  sh /tmp/install.sh"
-        echo "============================================================================"
-        exit 1
-    fi
+_p16() {
+    LICENSE_KEY="$1"
+    [ -z "$LICENSE_KEY" ] && _j10 "License key tidak diberikan. Usage: $0 <license_key>"
+    _h8 "License key diterima: $LICENSE_KEY"
 }
 
-validate_license() {
-    log_step "Memvalidasi license key..."
-    RESPONSE=$(curl -sSL -X POST "$WORKER_URL/validate" \
+_q17() {
+    _k11 "Memvalidasi license key..."
+    _r18=$(curl -sSL -X POST "$_b2/validate" \
         -H "Content-Type: application/json" \
         -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"mac_address\": \"$MAC_ADDR\", \"board_id\": \"$BOARD_ID\"}" 2>/dev/null)
     
-    SUCCESS=$(echo "$RESPONSE" | grep -o '"success":true' || true)
-    [ -z "$SUCCESS" ] && log_error "Validasi gagal: $(echo "$RESPONSE" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
+    _s19=$(echo "$_r18" | grep -o '"success":true' || true)
+    [ -z "$_s19" ] && _j10 "Validasi gagal: $(echo "$_r18" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
     
-    MASTER_PASSWORD=$(echo "$RESPONSE" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+    _t20=$(echo "$_r18" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+    DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
     
-    DECRYPTION_KEY=$(sha256_hash "${MASTER_PASSWORD}:${FINGERPRINT}")
-    
-    log_info "License valid! Dynamic key generated."
-    
-    TELEGRAM_SENT=$(echo "$RESPONSE" | grep -o '"sent":true' || true)
-    if [ -n "$TELEGRAM_SENT" ]; then
-        log_info "✅ Telegram notification terkirim"
-    else
-        TELEGRAM_REASON=$(echo "$RESPONSE" | grep -o '"reason":"[^"]*"' | cut -d'"' -f4 || echo "tidak ada")
-        log_warn "️  Telegram notification tidak terkirim: $TELEGRAM_REASON"
-    fi
+    _h8 "License valid! Dynamic key generated."
 }
 
-get_framework_target() {
+_u21() {
     case "$1" in
-        99-autologin) echo "/etc/hotplug.d/iface/99-autologin" ;;
-        autologin_init) echo "/etc/init.d/autologin" ;;
-        autologin_bin) echo "/usr/bin/autologin" ;;
+        99-autologin) echo "$_f6" ;;
+        autologin_init) echo "$_e5" ;;
+        autologin_bin) echo "$_g7" ;;
         autologin.lua) echo "/usr/lib/lua/luci/controller/autologin.lua" ;;
-        auto_timezone.sh) echo "/usr/lib/autologin/auto_timezone.sh" ;;
-        daemon.sh) echo "/usr/lib/autologin/daemon.sh" ;;
-        heartbeat.sh) echo "/usr/lib/autologin/heartbeat.sh" ;;
-        health_check.sh) echo "/usr/lib/autologin/health_check.sh" ;;
-        logging.sh) echo "/usr/lib/autologin/logging.sh" ;;
-        login_executor.sh) echo "/usr/lib/autologin/login_executor.sh" ;;
-        mac_apply.sh) echo "/usr/lib/autologin/mac_apply.sh" ;;
-        mac_spoof.sh) echo "/usr/lib/autologin/mac_spoof.sh" ;;
-        telegram_notify.sh) echo "/usr/lib/autologin/telegram_notify.sh" ;;
-        update_json.lua) echo "/usr/lib/autologin/update_json.lua" ;;
-        backend_hosts.conf) echo "/usr/lib/autologin/captive-detect/backend_hosts.conf" ;;
-        detection.conf) echo "/usr/lib/autologin/captive-detect/detection.conf" ;;
-        endpoints.conf) echo "/usr/lib/autologin/captive-detect/endpoints.conf" ;;
-        portal.json) echo "/usr/lib/autologin/captive-detect/portal.json" ;;
+        auto_timezone.sh) echo "$_d4/auto_timezone.sh" ;;
+        daemon.sh) echo "$_d4/daemon.sh" ;;
+        heartbeat.sh) echo "$_d4/heartbeat.sh" ;;
+        health_check.sh) echo "$_d4/health_check.sh" ;;
+        logging.sh) echo "$_d4/logging.sh" ;;
+        login_executor.sh) echo "$_d4/login_executor.sh" ;;
+        mac_apply.sh) echo "$_d4/mac_apply.sh" ;;
+        mac_spoof.sh) echo "$_d4/mac_spoof.sh" ;;
+        telegram_notify.sh) echo "$_d4/telegram_notify.sh" ;;
+        update_json.lua) echo "$_d4/update_json.lua" ;;
+        backend_hosts.conf) echo "$_d4/captive-detect/backend_hosts.conf" ;;
+        detection.conf) echo "$_d4/captive-detect/detection.conf" ;;
+        endpoints.conf) echo "$_d4/captive-detect/endpoints.conf" ;;
+        portal.json) echo "$_d4/captive-detect/portal.json" ;;
         autologin.css) echo "/www/luci-static/resources/autologin.css" ;;
         *) echo "" ;;
     esac
 }
 
-get_payload_target() {
-    case "$1" in
-        index.htm) echo "/usr/lib/lua/luci/view/autologin/index.htm" ;;
-        common.sh) echo "/usr/lib/autologin/common.sh" ;;
-        anti_blocking.sh) echo "/usr/lib/autologin/anti_blocking.sh" ;;
-        routing_lib.sh) echo "/usr/lib/autologin/routing_lib.sh" ;;
-        hotspot_mikrotik.sh) echo "/usr/lib/autologin/captive-detect/handlers/hotspot_mikrotik.sh" ;;
-        wifi_id_classic.sh) echo "/usr/lib/autologin/captive-detect/handlers/wifi_id_classic.sh" ;;
-        wifi_id_nextjs.sh) echo "/usr/lib/autologin/captive-detect/handlers/wifi_id_nextjs.sh" ;;
-        wms.sh) echo "/usr/lib/autologin/captive-detect/handlers/wms.sh" ;;
-        autologin.js) echo "/www/luci-static/resources/autologin.js" ;;
-        donate.png) echo "/www/luci-static/resources/donate.png" ;;
-        logout.sh) echo "/usr/lib/autologin/logout.sh" ;;
-        *) echo "" ;;
-    esac
-}
-
-download_framework() {
-    log_step "Downloading framework..."
-    mkdir -p /etc/hotplug.d/iface /etc/init.d /usr/bin /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/autologin /usr/lib/autologin/captive-detect/handlers /www/luci-static/resources
+_v22() {
+    _k11 "Downloading framework..."
+    mkdir -p "$_d4/captive-detect/handlers" /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/autologin /www/luci-static/resources /etc/hotplug.d/iface /etc/init.d /usr/bin
     
-    for gh_file in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
-        target=$(get_framework_target "$gh_file")
-        if [ -n "$target" ]; then
-            curl -sSL "${BASE_URL}/framework/${gh_file}" -o "$target" 2>/dev/null || log_warn "Gagal download $gh_file"
-            chmod 0755 "$target"
+    for _w23 in 99-autologin autologin_init autologin_bin autologin.lua auto_timezone.sh daemon.sh heartbeat.sh health_check.sh logging.sh login_executor.sh mac_apply.sh mac_spoof.sh telegram_notify.sh update_json.lua backend_hosts.conf detection.conf endpoints.conf portal.json autologin.css; do
+        _x24=$(_u21 "$_w23")
+        if [ -n "$_x24" ]; then
+            curl -sSL "${_a1}/framework/${_w23}" -o "$_x24" 2>/dev/null || continue
+            chmod 0755 "$_x24"
         fi
     done
-    log_info "Framework berhasil diinstall."
+    _h8 "Framework berhasil diinstall."
 }
 
-download_and_decrypt_payload() {
-    log_step "Mengunduh payload premium dari secure storage..."
+_y25() {
+    _k11 "Mengunduh payload..."
     
-    log_info "Membuat sesi download aman..."
-    SESSION_RESPONSE=$(curl -sSL -X POST "$WORKER_URL/payload/get-session" \
+    _z26=$(curl -sSL -X POST "$_b2/payload/get-session" \
         -H "Content-Type: application/json" \
         -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
     
-    SESSION_SUCCESS=$(echo "$SESSION_RESPONSE" | grep -o '"success":true' || true)
-    if [ -z "$SESSION_SUCCESS" ]; then
-        SESSION_ERROR=$(echo "$SESSION_RESPONSE" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)
-        log_error "Gagal membuat sesi download: $SESSION_ERROR"
-    fi
+    _aa27=$(echo "$_z26" | grep -o '"success":true' || true)
+    [ -z "$_aa27" ] && _j10 "Gagal membuat sesi download: $(echo "$_z26" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
     
-    SESSION_TOKEN=$(echo "$SESSION_RESPONSE" | grep -o '"session_token":"[^"]*"' | cut -d'"' -f4)
-    log_info "Sesi download dibuat. Token valid untuk 10 menit."
+    SESSION_TOKEN=$(echo "$_z26" | grep -o '"session_token":"[^"]*"' | cut -d'"' -f4)
+    _h8 "Sesi download dibuat."
     
-    PAYLOAD_FILES="index.htm common.sh anti_blocking.sh routing_lib.sh hotspot_mikrotik.sh wifi_id_classic.sh wifi_id_nextjs.sh wms.sh autologin.js donate.png logout.sh"
-    TOTAL_FILES=$(echo $PAYLOAD_FILES | wc -w)
-    CURRENT_FILE=0
+    _ab28=$(curl -sSL -X POST "$_b2/payload/instructions" \
+        -H "Content-Type: application/json" \
+        -d "{\"session_token\": \"$SESSION_TOKEN\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
     
-    for file in $PAYLOAD_FILES; do
-        CURRENT_FILE=$((CURRENT_FILE + 1))
-        target=$(get_payload_target "$file")
+    _ac29=$(echo "$_ab28" | grep -o '"success":true' || true)
+    [ -z "$_ac29" ] && _j10 "Gagal mendapatkan instructions"
+    
+    _ad30=$(echo "$_ab28" | grep -o '"total_files":[0-9]*' | cut -d: -f2)
+    _h8 "Menerima $_ad30 instructions dari server."
+    
+    echo "$_ab28" | grep -o '"file":"[^"]*"' | cut -d'"' -f4 | while read _ae31; do
+        _af32=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"target":"[^"]*"' | cut -d'"' -f4)
+        _ag33=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"chmod":"[^"]*"' | cut -d'"' -f4)
         
-        if [ -n "$target" ]; then
-            log_info "[$CURRENT_FILE/$TOTAL_FILES] Mengunduh $file.enc..."
+        if [ -n "$_af32" ]; then
+            _h8 "Mengunduh $_ae31..."
             
-            HTTP_CODE=$(curl -sSL -o "/tmp/${file}.enc" -w "%{http_code}" -X POST "$WORKER_URL/payload/download" \
+            HTTP_CODE=$(curl -sSL -o "/tmp/$_ae31" -w "%{http_code}" -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
-                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"${file}.enc\"}" 2>/dev/null)
+                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_ae31\"}" 2>/dev/null)
             
             if [ "$HTTP_CODE" != "200" ]; then
-                log_error "Gagal mengunduh $file (HTTP $HTTP_CODE). Sesi mungkin kadaluarsa atau dibatasi."
-                rm -f "/tmp/${file}.enc"
+                _i9 "Gagal mengunduh $_ae31 (HTTP $HTTP_CODE)"
+                rm -f "/tmp/$_ae31"
                 continue
             fi
             
-            openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "/tmp/${file}.enc" -out "$target" -pass pass:"$DECRYPTION_KEY" 2>/dev/null
+            openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+                -in "/tmp/$_ae31" -out "$_af32" \
+                -pass pass:"$DECRYPTION_KEY" 2>/dev/null
             
             if [ $? -eq 0 ]; then
-                chmod 0755 "$target"
-                log_info "[$CURRENT_FILE/$TOTAL_FILES] $file berhasil diunduh dan didekripsi."
+                [ -n "$_ag33" ] && chmod "$_ag33" "$_af32"
+                _h8 "$_ae31 berhasil."
             else
-                log_warn "[$CURRENT_FILE/$TOTAL_FILES] Gagal mendekripsi $file. Kunci tidak cocok atau file korup."
+                _i9 "Decrypt gagal: $_ae31"
             fi
             
-            rm -f "/tmp/${file}.enc"
+            rm -f "/tmp/$_ae31"
         fi
     done
     
-    log_info "Payload premium berhasil diinstall."
+    _h8 "Payload premium berhasil diinstall."
 }
 
-calculate_file_hashes() {
-    log_step "Menghitung integrity hash untuk Payload..."
-    HASH_FILE="/usr/lib/autologin/.file_hashes"
-    
+_ah34() {
+    _k11 "Menghitung integrity hash..."
+    HASH_FILE="$_d4/.file_hashes"
     > "$HASH_FILE"
     
-    PREMIUM_FILES="
-/usr/lib/autologin/common.sh
-/usr/lib/autologin/anti_blocking.sh
-/usr/lib/autologin/routing_lib.sh
-/usr/lib/autologin/logout.sh
-/usr/lib/autologin/captive-detect/handlers/hotspot_mikrotik.sh
-/usr/lib/autologin/captive-detect/handlers/wifi_id_classic.sh
-/usr/lib/autologin/captive-detect/handlers/wifi_id_nextjs.sh
-/usr/lib/autologin/captive-detect/handlers/wms.sh
-/usr/lib/lua/luci/view/autologin/index.htm
-/www/luci-static/resources/autologin.js
-/www/luci-static/resources/donate.png
-"
+    find "$_d4" -type f -name "*.sh" -o -name "*.lua" -o -name "*.conf" -o -name "*.json" 2>/dev/null | while read _ai35; do
+        hash=$(sha256sum "$_ai35" 2>/dev/null | awk '{print $1}')
+        [ -n "$hash" ] && echo "$hash  $_ai35" >> "$HASH_FILE"
+    done
     
-    for file in $PREMIUM_FILES; do
-        if [ -f "$file" ]; then
-            hash=$(sha256sum "$file" 2>/dev/null | awk '{print $1}')
-            if [ -n "$hash" ]; then
-                echo "$hash  $file" >> "$HASH_FILE"
-            fi
-        fi
+    find /usr/lib/lua/luci/view/autologin /www/luci-static/resources -type f 2>/dev/null | while read _ai35; do
+        hash=$(sha256sum "$_ai35" 2>/dev/null | awk '{print $1}')
+        [ -n "$hash" ] && echo "$hash  $_ai35" >> "$HASH_FILE"
     done
     
     chmod 600 "$HASH_FILE"
-    
-    TOTAL_FILES=$(wc -l < "$HASH_FILE")
-    log_info "Integrity disimpan"
+    _h8 "Integrity hash disimpan."
 }
 
-save_metadata_and_cron() {
-    log_step "Menyimpan setup cron..."
-    mkdir -p /usr/lib/autologin
-    echo "$LICENSE_KEY" > /usr/lib/autologin/.license_key
-    echo "$FINGERPRINT" > /usr/lib/autologin/.fingerprint
-    echo "1.0.0" > /usr/lib/autologin/.version
-    echo "active" > /usr/lib/autologin/.license_status
-    chmod 600 /usr/lib/autologin/.license_key /usr/lib/autologin/.fingerprint
-
-    log_info "Setting up cron job..."
+_aj36() {
+    _k11 "Setup cron..."
+    mkdir -p "$_d4"
+    echo "$LICENSE_KEY" > "$_d4/.license_key"
+    echo "$FINGERPRINT" > "$_d4/.fingerprint"
+    echo "2.0.0" > "$_d4/.version"
+    echo "active" > "$_d4/.license_status"
+    chmod 600 "$_d4/.license_key" "$_d4/.fingerprint"
     
-    sed -i '/autologin-heartbeat/d' /etc/crontabs/root 2>/dev/null || true
-    sed -i '/heartbeat.sh/d' /etc/crontabs/root 2>/dev/null || true
-    
-    echo "0 */6 * * * /usr/lib/autologin/heartbeat.sh >/dev/null 2>&1" >> /etc/crontabs/root
-    
+    sed -i '/autologin/d' /etc/crontabs/root 2>/dev/null || true
+    echo "0 */6 * * * $_d4/heartbeat.sh >/dev/null 2>&1" >> /etc/crontabs/root
     /etc/init.d/cron restart 2>/dev/null || true
     
-    if grep -q "heartbeat.sh" /etc/crontabs/root; then
-        log_info "Cron job berhasil ditambahkan."
-    else
-        log_warn "Cron job gagal ditambahkan. Jalankan manual:"
-        log_warn "  echo '0 */6 * * * /usr/lib/autologin/heartbeat.sh' >> /etc/crontabs/root"
-    fi
+    _h8 "Cron job ditambahkan."
 }
 
-restart_services() {
-    log_step "Restarting services..."
-    rm -rf /tmp/luci-modulecache /tmp/luci-indexcache /tmp/luci-* 2>/dev/null || true
+_ak37() {
+    _k11 "Restarting services..."
     /etc/init.d/uhttpd restart 2>/dev/null || true
-    /etc/init.d/autologin enable 2>/dev/null || true
-    /etc/init.d/autologin start 2>/dev/null || true
+    [ -f "$_e5" ] && "$_e5" start 2>/dev/null || true
 }
 
-main() {
-    echo "============================================================================"
-    echo "Autologin OpenWrt Installer (Encrypted Payload)"
-    echo "============================================================================"
-    detect_lan_ip
-    install_dependencies
-    collect_fingerprint
-    get_license_key "$1"
-    validate_license
-    download_framework
-    download_and_decrypt_payload
-	calculate_file_hashes
-    save_metadata_and_cron
-    restart_services
-    
-    echo "============================================================================"
-    log_info "INSTALASI BERHASIL!"
-    echo "Akses panel: http://${LAN_IP}/cgi-bin/luci/admin/autologin/konfigurasi"
-    echo "============================================================================"
-}
+echo "============================================================================"
+echo "Autologin Installer v1.0"
+echo "============================================================================"
+_m13
+_n14
+_o15
+_p16 "$1"
+_q17
+_v22
+_y25
+_ah34
+_aj36
+_ak37
 
-main "$@"
+echo "============================================================================"
+_h8 "INSTALASI BERHASIL!"
+echo "Akses panel: http://${LAN_IP}/cgi-bin/luci/admin/autologin/konfigurasi"
+echo "============================================================================"
