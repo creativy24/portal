@@ -1,6 +1,6 @@
 #!/bin/sh
 # ============================================================================
-# Autologin - Update
+# Auto-Update autologin
 # ============================================================================
 set -e
 
@@ -26,10 +26,10 @@ _r18=$(curl -sSL -X POST "$_b2/validate" \
     -H "Content-Type: application/json" \
     -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\", \"request_type\": \"refresh\"}" 2>/dev/null)
 
-_s19=$(echo "$_r18" | grep -o '"success":true' || true)
-[ -z "$_s19" ] && { _i9 "Validasi gagal."; exit 1; }
+_s19=$(echo "$_r18" | jq -r '.success' 2>/dev/null)
+[ "$_s19" != "true" ] && { _i9 "Validasi gagal."; exit 1; }
 
-_t20=$(echo "$_r18" | grep -o '"decryption_key":"[^"]*"' | cut -d'"' -f4)
+_t20=$(echo "$_r18" | jq -r '.decryption_key' 2>/dev/null)
 DECRYPTION_KEY=$(_l12 "${_t20}:${FINGERPRINT}")
 
 _u21() {
@@ -66,45 +66,58 @@ for _w23 in 99-autologin autologin_init autologin_bin autologin.lua auto_timezon
     fi
 done
 
-_h8 "Mengunduh payload..."
+_h8 "Mengunduh payload dari secure storage..."
 
 _z26=$(curl -sSL -X POST "$_b2/payload/get-session" \
     -H "Content-Type: application/json" \
     -d "{\"license_key\": \"$LICENSE_KEY\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
 
-_aa27=$(echo "$_z26" | grep -o '"success":true' || true)
-if [ -n "$_aa27" ]; then
-    SESSION_TOKEN=$(echo "$_z26" | grep -o '"session_token":"[^"]*"' | cut -d'"' -f4)
+_aa27=$(echo "$_z26" | jq -r '.success' 2>/dev/null)
+if [ "$_aa27" = "true" ]; then
+    SESSION_TOKEN=$(echo "$_z26" | jq -r '.session_token' 2>/dev/null)
     
     _ab28=$(curl -sSL -X POST "$_b2/payload/instructions" \
         -H "Content-Type: application/json" \
         -d "{\"session_token\": \"$SESSION_TOKEN\", \"fingerprint\": \"$FINGERPRINT\"}" 2>/dev/null)
     
-    echo "$_ab28" | grep -o '"file":"[^"]*"' | cut -d'"' -f4 | while read _ae31; do
-        _af32=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"target":"[^"]*"' | cut -d'"' -f4)
-        _ag33=$(echo "$_ab28" | grep -o "\"file\":\"$_ae31\"[^}]*" | grep -o '"chmod":"[^"]*"' | cut -d'"' -f4)
+    echo "$_ab28" > /tmp/autologin_update_instructions.json
+    
+    jq -c '.instructions[]' /tmp/autologin_update_instructions.json 2>/dev/null | while read -r _inst; do
+        _action=$(echo "$_inst" | jq -r '.action' 2>/dev/null)
         
-        if [ -n "$_af32" ]; then
-            HTTP_CODE=$(curl -sSL -o "/tmp/$_ae31" -w "%{http_code}" -X POST "$_b2/payload/download" \
+        if [ "$_action" = "mkdir" ]; then
+            _path=$(echo "$_inst" | jq -r '.path' 2>/dev/null)
+            mkdir -p "$_path" 2>/dev/null || _i9 "Gagal create directory: $_path"
+            
+        elif [ "$_action" = "download_decrypt" ]; then
+            _file=$(echo "$_inst" | jq -r '.file' 2>/dev/null)
+            _target=$(echo "$_inst" | jq -r '.target' 2>/dev/null)
+            _chmod=$(echo "$_inst" | jq -r '.chmod' 2>/dev/null)
+            
+            HTTP_CODE=$(curl -sSL -o "/tmp/$_file" -w "%{http_code}" --output-binary -X POST "$_b2/payload/download" \
                 -H "Content-Type: application/json" \
-                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_ae31\"}" 2>/dev/null)
+                -d "{\"session_token\": \"$SESSION_TOKEN\", \"file\": \"$_file\"}" 2>/dev/null)
             
             if [ "$HTTP_CODE" = "200" ]; then
                 openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
-                    -in "/tmp/$_ae31" -out "$_af32" \
+                    -in "/tmp/$_file" -out "$_target" \
                     -pass pass:"$DECRYPTION_KEY" 2>/dev/null && {
-                    [ -n "$_ag33" ] && chmod "$_ag33" "$_af32"
-                } || _i9 "Decrypt gagal: $_ae31"
+                    [ -n "$_chmod" ] && chmod "$_chmod" "$_target"
+                } || _i9 "Decrypt gagal: $_file"
+            else
+                _i9 "Gagal download $_file (HTTP $HTTP_CODE)"
             fi
             
-            rm -f "/tmp/$_ae31"
+            rm -f "/tmp/$_file"
         fi
     done
+    
+    rm -f /tmp/autologin_update_instructions.json
 else
     _i9 "Gagal membuat sesi download."
 fi
 
-REMOTE_VERSION=$(curl -sSL "${_a1}/version.txt" 2>/dev/null || echo "2.0.0")
+REMOTE_VERSION=$(curl -sSL "${_a1}/version.txt" 2>/dev/null || echo "2.1.0")
 echo "$REMOTE_VERSION" > "$_d4/.version"
 _h8 "Versi diupdate ke: $REMOTE_VERSION"
 
